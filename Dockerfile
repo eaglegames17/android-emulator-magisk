@@ -1,27 +1,22 @@
 FROM budtmo/docker-android:emulator_13.0_v2.1.3-p1
 
+# Install Python and required tools
 USER root
+RUN apt-get update && \
+    apt-get install -y python3-pip && \
+    pip3 install --upgrade pip
 
-# Install Python and Appium
-RUN apt update && \
-    apt install -y python3 python3-pip unzip wget && \
-    pip3 install Appium-Python-Client
+# Copy Python automation script and install dependencies
+COPY requirements.txt /tmp/
+RUN pip3 install -r /tmp/requirements.txt
 
-# Install APKs: Xposed Installer, Device Faker, and your app
-COPY ./apps /root/tmp/apps
-COPY ./xposed /root/tmp/xposed
+# Copy APKs and Python script
+COPY xposed/ /root/tmp/xposed/
+COPY apps/ /root/tmp/apps/
+COPY appium_test.py /root/appium_test.py
 
-# Install user APKs and tools
-RUN for apk in /root/tmp/xposed/*.apk /root/tmp/apps/*.apk; do \
-      [ -f "$apk" ] && adb install "$apk"; \
-    done
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Enable Device Faker Xposed module (simulate activation)
-RUN adb shell su -c "mkdir -p /data/data/de.robv.android.xposed.installer/conf" && \
-    adb shell su -c "echo 'com.devicefaker.module' > /data/data/de.robv.android.xposed.installer/conf/modules.list"
-
-# Trigger soft reboot (required after activating Xposed modules)
-RUN adb shell su -c "setprop ctl.restart zygote"
-
-# Allow time for reboot
-RUN sleep 20
+ENTRYPOINT ["/entrypoint.sh"]
