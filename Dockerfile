@@ -1,59 +1,46 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
-ENV ANDROID_HOME /opt/android-sdk
-ENV PATH $PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
 ENV DEBIAN_FRONTEND=noninteractive
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
-# Install dependencies
+# --- Install dependencies ---
 RUN apt-get update && apt-get install -y \
-    openjdk-11-jdk wget unzip curl git libgl1-mesa-dev \
-    qemu-kvm libvirt-clients libvirt-daemon-system bridge-utils \
-    python3 python3-pip zip sudo net-tools \
-    build-essential libssl-dev && \
-    rm -rf /var/lib/apt/lists/*
+    wget unzip git curl sudo libgl1-mesa-dev libvirt-daemon-system qemu-kvm \
+    openjdk-11-jdk android-sdk adb xz-utils nodejs npm
 
-# Install Node.js and Appium
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g appium appium-doctor
+# --- Install Android SDK Command Line Tools ---
+RUN mkdir -p $ANDROID_SDK_ROOT/cmdline-tools && \
+    cd $ANDROID_SDK_ROOT/cmdline-tools && \
+    wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip && \
+    unzip cmdline-tools.zip && rm cmdline-tools.zip && \
+    mv cmdline-tools latest
 
-# Install Android command-line tools (cleaned up)
-RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
-    cd ${ANDROID_HOME}/cmdline-tools && \
-    wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O tools.zip && \
-    unzip tools.zip -d temp && \
-    mv temp/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest
+# --- Accept licenses and install packages ---
+RUN yes | sdkmanager --licenses && \
+    sdkmanager \
+        "platform-tools" \
+        "emulator" \
+        "platforms;android-30" \
+        "system-images;android-30;google_apis;x86_64"
 
-# Install Android packages
-RUN yes | sdkmanager --sdk_root=${ANDROID_HOME} \
-    "emulator" "platform-tools" "platforms;android-30" "system-images;android-30;google_apis;x86_64"
-
-# Create AVD
+# --- Create AVD ---
 RUN echo "no" | avdmanager create avd -n magisk-avd \
     -k "system-images;android-30;google_apis;x86_64" --device "pixel"
 
-# Clone pre-rooted image
-RUN git clone https://github.com/Revanced-Magisk-Modules/emulator-magisk /magisk-emulator && \
-    cp -r /magisk-emulator/system-images/* ${ANDROID_HOME}/system-images/android-30/google_apis/x86_64/
+# --- Replace system.img with pre-rooted Magisk image ---
+RUN mkdir -p /root/magisk-image && \
+    wget -O /root/magisk-image/system.img.xz https://github.com/thepacketgeek/android-magisk-emulator/releases/download/v1.0/system.img.xz && \
+    unxz /root/magisk-image/system.img.xz && \
+    mv /root/magisk-image/system.img $ANDROID_SDK_ROOT/system-images/android-30/google_apis/x86_64/
 
-# Download LSPosed and Device Faker modules
-RUN mkdir -p /modules && \
-    wget https://github.com/LSPosed/LSPosed/releases/latest/download/LSPosed-v1.9.2-6726-zygisk-release.zip -O /modules/lsposed.zip && \
-    wget https://github.com/superyujin/device-faker/releases/latest/download/devicefaker.zip -O /modules/devicefaker.zip
+# --- Install Appium ---
+RUN npm install -g appium
 
-# Install modules to Magisk directory
-RUN mkdir -p /data/adb/modules/lsposed && \
-    unzip /modules/lsposed.zip -d /data/adb/modules/lsposed && \
-    touch /data/adb/modules/lsposed/enable
+# --- Expose ports: 5555 for ADB, 4723 for Appium ---
+EXPOSE 5555 4723
 
-RUN mkdir -p /data/adb/modules/devicefaker && \
-    unzip /modules/devicefaker.zip -d /data/adb/modules/devicefaker && \
-    touch /data/adb/modules/devicefaker/enable
-
-# Expose emulator & Appium ports
-EXPOSE 5554 5555 4723
-
-# Start emulator + Appium together
+# --- Run emulator and Appium ---
 CMD bash -c "\
 emulator -avd magisk-avd -writable-system -no-audio -no-window -gpu swiftshader_indirect -qemu -m 2048 & \
 sleep 40 && \
