@@ -29,4 +29,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: yourdockerhubusername/android-emulator-magisk:latest
+          tags: eagle177/android-emulator-magisk:latest
