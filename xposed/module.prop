@@ -1,0 +1,4 @@
+id=com.devicefaker.module
+name=Device Faker
+version=1.5
+description=Spoofs device info
